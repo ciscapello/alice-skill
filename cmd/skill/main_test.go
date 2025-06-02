@@ -1,13 +1,12 @@
 package main
 
 import (
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-resty/resty/v2"
 	"github.com/stretchr/testify/assert"
-	"resty.dev/v3"
 )
 
 func TestWebhook(t *testing.T) {
@@ -15,17 +14,10 @@ func TestWebhook(t *testing.T) {
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
 
-	successBody := `{
-        "response": {
-            "text": "Извините, я пока ничего не умею"
-        },
-        "version": "1.0"
-    }`
-
 	testCases := []struct {
-		name         string // добавляем название тестов
+		name         string
 		method       string
-		body         string // добавляем тело запроса в табличные тесты
+		body         string
 		expectedCode int
 		expectedBody string
 	}{
@@ -63,9 +55,10 @@ func TestWebhook(t *testing.T) {
 		{
 			name:         "method_post_success",
 			method:       http.MethodPost,
-			body:         `{"request": {"type": "SimpleUtterance", "command": "sudo do something"}, "version": "1.0"}`,
+			body:         `{"request": {"type": "SimpleUtterance", "command": "sudo do something"}, "session": {"new": true}, "version": "1.0"}`,
 			expectedCode: http.StatusOK,
-			expectedBody: successBody,
+			// ответ стал сложнее, поэтому сравниваем его с шаблоном вместо точной строки
+			expectedBody: `Точное время .* часов, .* минут. Для вас нет новых сообщений.`,
 		},
 	}
 
@@ -83,12 +76,10 @@ func TestWebhook(t *testing.T) {
 			resp, err := req.Send()
 			assert.NoError(t, err, "error making HTTP request")
 
-			res, _ := io.ReadAll(resp.Body)
-
 			assert.Equal(t, tc.expectedCode, resp.StatusCode(), "Response code didn't match expected")
-			// проверяем корректность полученного тела ответа, если мы его ожидаем
 			if tc.expectedBody != "" {
-				assert.JSONEq(t, tc.expectedBody, string(res))
+				// сравниваем тело ответа с ожидаемым шаблоном
+				assert.Regexp(t, tc.expectedBody, string(resp.Body()))
 			}
 		})
 	}
